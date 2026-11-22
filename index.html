@@ -220,6 +220,25 @@ function draw() {
   hg.addColorStop(0, 'rgba(255,246,226,0.95)'); hg.addColorStop(0.25, 'rgba(255,226,170,0.35)'); hg.addColorStop(1, 'rgba(255,226,170,0)');
   ctx.fillStyle = hg; ctx.fillRect(hx - 11 * dpr, hy - 11 * dpr, 22 * dpr, 22 * dpr);
 
+  // the ledger: a thin t-ruler down the right edge, 0 at top and T_MAX at the bottom, one tick per zero passed
+  {
+    const rx = W_ - Math.max(20, 14) * dpr, r0 = Math.max(24, 30) * dpr, r1 = H_ - 92 * dpr;
+    ctx.globalAlpha = 0.10 * fade; ctx.fillStyle = 'rgb(200,196,186)';
+    ctx.fillRect(rx - 0.5 * dpr, r0, 1 * dpr, r1 - r0);
+    for (let n = 0; n < zi; n++) {
+      const y = r0 + (r1 - r0) * zeros[n] / T_MAX;
+      const lpn = pulses.find(p => p.n === n + 1);
+      const g = lpn ? Math.exp(-lpn.age * 0.8) : 0;
+      ctx.globalAlpha = (0.32 + 0.68 * g) * fade;
+      ctx.fillStyle = g > 0.02 ? 'rgb(255,236,200)' : 'rgb(170,180,214)';
+      const w = (5 + 7 * g) * dpr;
+      ctx.fillRect(rx - w, y - 0.5 * dpr, w, 1 * dpr);
+    }
+    const yh = r0 + (r1 - r0) * t / T_MAX;
+    ctx.globalAlpha = 0.7 * fade; ctx.fillStyle = 'rgb(255,240,214)';
+    ctx.beginPath(); ctx.arc(rx, yh, 1.8 * dpr, 0, 6.2832); ctx.fill();
+  }
+
   // the zero's t, said quietly in a fixed corner (newest only)
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
