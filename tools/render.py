@@ -39,7 +39,7 @@ with sync_playwright() as p:
     b = p.chromium.launch()
     W, H, D = (1440, 900, 1) if mode == 'desktop' else (390, 844, 2)
     page = b.new_page(viewport={'width': W, 'height': H}, device_scale_factor=D)
-    page.goto('http://127.0.0.1:8765/index.html?rec')
+    page.goto('http://127.0.0.1:8765/index.html?rec' + ('&hurry' if os.environ.get('HURRY') else ''))
     page.wait_for_function('window.__ready === true', timeout=120000)
     if mode == 'verify':
         verify(page)
