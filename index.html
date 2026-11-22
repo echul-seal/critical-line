@@ -7,18 +7,22 @@
 <title>critical line</title>
 <meta name="description" content="ζ(½ + it) traced as t rises. It passes through the centre at each zero. Seal, Nov 2026.">
 <style>
-html,body{margin:0;height:100%;background:#04050a;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html,body{margin:0;height:100%;background:#04050a;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
-#cap{position:fixed;left:max(18px,env(safe-area-inset-left));bottom:max(18px,env(safe-area-inset-bottom));max-width:min(270px,66vw);font:10.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(206,198,182,.42);letter-spacing:.02em;pointer-events:none}
-#cap b{display:block;font:italic 16px/1.2 Georgia,'Times New Roman',serif;color:rgba(238,228,208,.7);font-weight:normal;letter-spacing:.01em;margin-bottom:6px}
-#cap i{font-style:normal;color:rgba(206,198,182,.26)}
-#tr{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));font:10.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(206,198,182,.36);pointer-events:none;text-align:right;font-variant-numeric:tabular-nums}
+#cap{position:fixed;left:max(20px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));max-width:min(290px,68vw);font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(214,206,190,.62);letter-spacing:.01em;pointer-events:none}
+#cap b{display:block;font:italic 19px/1.2 Georgia,'Times New Roman',serif;color:rgba(244,234,214,.88);font-weight:normal;margin-bottom:7px}
+#cap i{font-style:normal;color:rgba(214,206,190,.38)}
+#tr{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom));font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(214,206,190,.55);pointer-events:none;text-align:right;font-variant-numeric:tabular-nums}
+#zl{position:fixed;left:max(20px,env(safe-area-inset-left));top:max(24px,env(safe-area-inset-top));pointer-events:none;opacity:0;color:rgb(246,236,216)}
+#zl .v{font:italic 26px/1.1 Georgia,'Times New Roman',serif;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+#zl .n{font:11.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(214,206,190,.6);margin-top:6px;letter-spacing:.04em}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="cap"><b>critical line</b>The point is ζ(½ + it) as t rises from 0. It passes through the centre exactly when t is a zero of ζ.<br><br>Seal, Nov 2026<br><i>hold to slow · tap to hurry</i></div>
+<div id="cap"><b>critical line</b>The point is ζ(½ + it) as t rises from 0. It passes through the small ring, 0, exactly when t is a zero of ζ.<br><br>Seal, Nov 2026<br><i>hold to slow · tap to hurry</i></div>
 <div id="tr"></div>
+<div id="zl"><div class="v"></div><div class="n"></div></div>
 <script>
 (() => {
 'use strict';
@@ -91,7 +95,8 @@ window.__zeros = zeros;
 
 // ---------- canvas ----------
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-const tr = document.getElementById('tr');
+const tr = document.getElementById('tr'), zl = document.getElementById('zl'), zlv = zl.firstChild, zln = zl.lastChild;
+let shownZero = 0;
 let Wpx = 0, Hpx = 0, dpr = 1;
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -103,10 +108,10 @@ resize();
 
 // ---------- state ----------
 const BASE = 2.5;          // t per second when nothing is happening
-const CX = 0.6;            // camera looks at 0.6 + 0i (zeta circles around 1, the origin sits left of centre)
-let t, zi, pulses, R, phase, phaseAge, life;
+const CX = 0.6;            // the view centres on 0.6 + 0i: zeta circles around 1, so the origin sits off centre
+let t, zi, pulses, EL, ES, phase, phaseAge, life;
 let mult = 1, target = 1, hurry = false;
-function reset() { t = 0; zi = 0; pulses = []; R = 1.9; phase = 'run'; phaseAge = 0; life = 0; }
+function reset() { t = 0; zi = 0; pulses = []; EL = 2.3; ES = 1.4; phase = 'run'; phaseAge = 0; life = 0; shownZero = 0; }
 reset();
 
 function idxAt(tt) { return Math.min(computed - 2, Math.max(0, Math.floor(tt / DT))); }
@@ -129,13 +134,14 @@ function step(dt) {
     if (phaseAge > 7) reset();
   }
   for (const p of pulses) p.age += dt;
-  while (pulses.length && pulses[0].age > 6) pulses.shift();
-  // camera: fit the last ~12 units of t, eased slowly
-  const i = idxAt(t), i0 = Math.max(0, i - 3000), i1 = Math.min(computed - 1, i + 250);
-  let md = 0;
-  for (let k = i0; k <= i1; k += 3) { const dx = X[k] - CX, dy = Y[k], d = dx * dx + dy * dy; if (d > md) md = d; }
-  const Rt = Math.max(1.9, 1.1 * Math.sqrt(md));
-  R += (Rt - R) * (1 - Math.exp(-dt * (Rt > R ? 0.9 : 0.35)));
+  while (pulses.length > 1 && pulses[0].age > 6) pulses.shift();
+  // camera: fit the last ~12 units of t (plus a little ahead), each axis on its own, eased slowly
+  const i = idxAt(t), i0 = Math.max(0, i - 3000), i1 = Math.min(computed - 1, i + 300);
+  let mr = 0, mi = 0;
+  for (let k = i0; k <= i1; k += 3) { const dx = Math.abs(X[k] - CX), dy = Math.abs(Y[k]); if (dx > mr) mr = dx; if (dy > mi) mi = dy; }
+  const ELt = Math.max(2.3, 1.08 * mr), ESt = Math.max(1.4, 1.08 * mi);
+  EL += (ELt - EL) * (1 - Math.exp(-dt * (ELt > EL ? 0.9 : 0.3)));
+  ES += (ESt - ES) * (1 - Math.exp(-dt * (ESt > ES ? 0.9 : 0.3)));
 }
 
 function mix(c1, c2, f) { return [c1[0] + (c2[0] - c1[0]) * f, c1[1] + (c2[1] - c1[1]) * f, c1[2] + (c2[2] - c1[2]) * f]; }
@@ -144,9 +150,14 @@ function trailColor(f) { return f < 0.6 ? mix(C_OLD, C_MID, f / 0.6) : mix(C_MID
 
 function draw() {
   const W_ = Wpx, H_ = Hpx;
-  const s = Math.min(W_ * 0.44, H_ * 0.34) / R;
-  const ox = W_ * 0.5 - CX * s, oy = H_ * 0.43; // screen position of the origin
-  const px = k => ox + X[k] * s, py = k => oy - Y[k] * s;
+  // portrait: the real axis points down the screen and the imaginary axis across; landscape: the usual way
+  const port = H_ > W_, Lh = (port ? H_ : W_) * 0.5, Sh = (port ? W_ : H_) * 0.5;
+  const s = Math.min(Lh * 0.80 / EL, Sh * 0.86 / ES);
+  const cxs = W_ * 0.5, cys = H_ * (port ? 0.45 : 0.5);          // screen point where CX + 0i sits
+  const ox = port ? cxs : cxs - CX * s, oy = port ? cys - CX * s : cys; // the origin on screen
+  const P = port ? ((re, im) => [ox - im * s, oy + re * s]) : ((re, im) => [ox + re * s, oy - im * s]);
+  const px = port ? (k => ox - Y[k] * s) : (k => ox + X[k] * s);
+  const py = port ? (k => oy + X[k] * s) : (k => oy - Y[k] * s);
   let fade = sm(life / 2);
   if (phase === 'end') fade *= 1 - sm(phaseAge / 4.5);
 
@@ -154,12 +165,12 @@ function draw() {
   ctx.globalAlpha = 1;
   ctx.fillStyle = '#04050a';
   ctx.fillRect(0, 0, W_, H_);
-  const vg = ctx.createRadialGradient(ox + CX * s, oy, 0, ox + CX * s, oy, Math.max(W_, H_) * 0.75);
+  const vg = ctx.createRadialGradient(cxs, cys, 0, cxs, cys, Math.max(W_, H_) * 0.75);
   vg.addColorStop(0, 'rgba(22,26,44,0.55)'); vg.addColorStop(1, 'rgba(4,5,10,0)');
   ctx.fillStyle = vg; ctx.fillRect(0, 0, W_, H_);
 
   const hi = idxAt(t), hf = t / DT - hi;
-  const hx = ox + (X[hi] + (X[hi + 1] - X[hi]) * hf) * s, hy = oy - (Y[hi] + (Y[hi + 1] - Y[hi]) * hf) * s;
+  const [hx, hy] = P(X[hi] + (X[hi + 1] - X[hi]) * hf, Y[hi] + (Y[hi + 1] - Y[hi]) * hf);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ctx.globalCompositeOperation = 'lighter';
 
@@ -169,11 +180,11 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(px(0), py(0));
     for (let k = st; k < hi; k += st) ctx.lineTo(px(k), py(k));
     ctx.lineTo(hx, hy);
-    ctx.globalAlpha = 0.11 * fade; ctx.strokeStyle = 'rgb(120,140,200)'; ctx.lineWidth = 0.8 * dpr; ctx.stroke();
+    ctx.globalAlpha = 0.075 * fade; ctx.strokeStyle = 'rgb(120,140,205)'; ctx.lineWidth = 0.8 * dpr; ctx.stroke();
   }
 
-  // the recent trail, in bands that fade with age
-  const L = 2600, B = 32, start = Math.max(0, hi - L);
+  // the recent trail, in bands that fade with age, with a soft glow near the head
+  const L = 3400, B = 40, start = Math.max(0, hi - L);
   for (let b = 0; b < B; b++) {
     const k0 = start + Math.floor((hi - start) * b / B), k1 = start + Math.floor((hi - start) * (b + 1) / B);
     if (k1 <= k0) continue;
@@ -183,31 +194,25 @@ function draw() {
     for (let k = k0 + 1; k <= k1; k++) ctx.lineTo(px(k), py(k));
     if (b === B - 1) ctx.lineTo(hx, hy);
     ctx.strokeStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-    ctx.globalAlpha = Math.pow(age, 1.7) * 0.95 * fade;
-    ctx.lineWidth = (0.9 + 0.9 * age) * dpr; ctx.stroke();
-    if (age > 0.8) { ctx.globalAlpha = (age - 0.8) * 0.45 * fade; ctx.lineWidth = 6 * dpr; ctx.stroke(); }
+    ctx.globalAlpha = (0.10 + 0.90 * Math.pow(age, 1.5)) * fade;
+    ctx.lineWidth = (0.8 + 1.2 * age * age) * dpr; ctx.stroke();
+    if (age > 0.55) { ctx.globalAlpha = Math.pow((age - 0.55) / 0.45, 2) * 0.16 * fade; ctx.lineWidth = (4 + 6 * age) * dpr; ctx.stroke(); }
   }
 
-  // the origin
-  ctx.globalAlpha = 0.5 * fade; ctx.fillStyle = 'rgb(210,205,195)';
-  ctx.beginPath(); ctx.arc(ox, oy, 1.4 * dpr, 0, 6.2832); ctx.fill();
-
-  // passes through zero
-  for (const p of pulses) {
-    const a1 = p.age;
-    if (a1 < 1.4) {
-      const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, 46 * dpr);
-      const al = 0.55 * Math.pow(1 - a1 / 1.4, 2) * fade;
-      g.addColorStop(0, `rgba(255,240,215,${al})`); g.addColorStop(1, 'rgba(255,240,215,0)');
-      ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(ox - 46 * dpr, oy - 46 * dpr, 92 * dpr, 92 * dpr);
-    }
-    if (a1 < 3) {
-      const f = a1 / 3;
-      ctx.globalAlpha = 0.5 * Math.pow(1 - f, 2.2) * fade;
-      ctx.strokeStyle = 'rgb(255,236,205)'; ctx.lineWidth = 1 * dpr;
-      ctx.beginPath(); ctx.arc(ox, oy, (3 + 92 * (1 - Math.pow(1 - f, 3))) * dpr, 0, 6.2832); ctx.stroke();
-    }
+  // the origin: a small fixed ring, always there. at a zero it fills with light and blooms.
+  let flare = 0;
+  for (const p of pulses) flare = Math.max(flare, p.age < 0.12 ? p.age / 0.12 : Math.exp(-(p.age - 0.12) * 1.25));
+  if (flare > 0.003) {
+    const rb = (26 + 30 * flare) * dpr;
+    const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, rb);
+    g.addColorStop(0, `rgba(255,244,222,${0.75 * flare * fade})`);
+    g.addColorStop(0.18, `rgba(255,226,176,${0.28 * flare * fade})`);
+    g.addColorStop(1, 'rgba(255,226,176,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(ox - rb, oy - rb, 2 * rb, 2 * rb);
   }
+  ctx.globalAlpha = (0.55 + 0.45 * flare) * fade; ctx.strokeStyle = 'rgb(236,228,212)'; ctx.lineWidth = 1 * dpr;
+  ctx.beginPath(); ctx.arc(ox, oy, 4.2 * dpr, 0, 6.2832); ctx.stroke();
+  if (flare > 0.003) { ctx.globalAlpha = flare * fade; ctx.fillStyle = 'rgb(255,248,232)'; ctx.beginPath(); ctx.arc(ox, oy, 3.2 * dpr, 0, 6.2832); ctx.fill(); }
 
   // head
   ctx.globalAlpha = fade;
@@ -215,22 +220,14 @@ function draw() {
   hg.addColorStop(0, 'rgba(255,246,226,0.95)'); hg.addColorStop(0.25, 'rgba(255,226,170,0.35)'); hg.addColorStop(1, 'rgba(255,226,170,0)');
   ctx.fillStyle = hg; ctx.fillRect(hx - 11 * dpr, hy - 11 * dpr, 22 * dpr, 22 * dpr);
 
-  // the zero's t, said quietly (newest only)
+  // the zero's t, said quietly in a fixed corner (newest only)
   ctx.globalCompositeOperation = 'source-over';
-  const lp = pulses[pulses.length - 1];
-  if (lp && lp.age < 5) {
-    const a2 = sm(lp.age / 0.5) * (1 - sm((lp.age - 3.2) / 1.8)) * fade;
-    ctx.globalAlpha = a2;
-    ctx.fillStyle = 'rgb(240,230,210)';
-    ctx.font = `italic ${15 * dpr}px Georgia, 'Times New Roman', serif`;
-    ctx.textBaseline = 'top';
-    const lx = ox + 14 * dpr, ly = oy + 14 * dpr;
-    ctx.fillText('t = ' + lp.tz.toFixed(6), lx, ly);
-    ctx.globalAlpha = a2 * 0.55;
-    ctx.font = `${10 * dpr}px ui-monospace, Menlo, monospace`;
-    ctx.fillText('zero ' + lp.n, lx, ly + 21 * dpr);
-  }
   ctx.globalAlpha = 1;
+  const lp = pulses[pulses.length - 1];
+  let za = 0;
+  if (lp) za = sm(lp.age / 0.6) * (1 - sm((lp.age - 3.4) / 1.6)) * fade;
+  if (lp && lp.n !== shownZero) { shownZero = lp.n; zlv.textContent = 't = ' + lp.tz.toFixed(6); zln.textContent = 'zero ' + lp.n; }
+  zl.style.opacity = za.toFixed(3);
   tr.textContent = 't ' + t.toFixed(2);
 }
 
@@ -251,7 +248,7 @@ addEventListener('contextmenu', e => e.preventDefault());
 if (REC) {
   compute(Infinity);
   window.__frame = dt => { step(dt); draw(); };
-  window.__state = () => ({ t, zeros: zeros.length, R, phase });
+  window.__state = () => ({ t, zeros: zeros.length, EL, ES, phase });
   window.__ready = true;
 } else {
   compute(performance.now() + 40);
