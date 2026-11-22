@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#04050a">
+<title>critical line</title>
+<meta name="description" content="ζ(½ + it) traced as t rises. It passes through the centre at each zero. Seal, Nov 2026.">
+<style>
+html,body{margin:0;height:100%;background:#04050a;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#cap{position:fixed;left:max(18px,env(safe-area-inset-left));bottom:max(18px,env(safe-area-inset-bottom));max-width:min(270px,66vw);font:10.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(206,198,182,.42);letter-spacing:.02em;pointer-events:none}
+#cap b{display:block;font:italic 16px/1.2 Georgia,'Times New Roman',serif;color:rgba(238,228,208,.7);font-weight:normal;letter-spacing:.01em;margin-bottom:6px}
+#cap i{font-style:normal;color:rgba(206,198,182,.26)}
+#tr{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));font:10.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(206,198,182,.36);pointer-events:none;text-align:right;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="cap"><b>critical line</b>The point is ζ(½ + it) as t rises from 0. It passes through the centre exactly when t is a zero of ζ.<br><br>Seal, Nov 2026<br><i>hold to slow · tap to hurry</i></div>
+<div id="tr"></div>
+<script>
+(() => {
+'use strict';
+const REC = /[?&]rec\b/.test(location.search);
+
+// ---------- the math: zeta on the critical line ----------
+// Borwein's algorithm 2 for the alternating series eta(s) = sum (-1)^k (k+1)^-s,
+// then zeta(s) = eta(s) / (1 - 2^(1-s)).  Error ~ e^(pi t/2) / (3+sqrt 8)^N,
+// so N = 180 terms is good past 1e-12 for every t up to 150.
+const N = 180;
+const a = new Float64Array(N + 1);
+a[0] = 1 / N;
+for (let i = 1; i <= N; i++) a[i] = a[i - 1] * 4 * (N + i - 1) * (N - i + 1) / ((2 * i) * (2 * i - 1));
+const tails = new Float64Array(N + 1);
+let acc = 0;
+for (let i = N; i >= 0; i--) { tails[i] = acc; acc += a[i]; }
+const W = new Float64Array(N), LK = new Float64Array(N);
+for (let k = 0; k < N; k++) {
+  W[k] = ((k & 1) ? -1 : 1) * (tails[k] / acc) / Math.sqrt(k + 1); // (d_n - d_k)/d_n * (k+1)^-1/2
+  LK[k] = Math.log(k + 1);
+}
+const SQ2 = Math.SQRT2, LN2 = Math.LN2;
+const out = [0, 0];
+function zeta(t) { // zeta(1/2 + i t) -> out = [re, im]
+  let er = 0, ei = 0;
+  for (let k = 0; k < N; k++) {
+    const p = t * LK[k], w = W[k];
+    er += w * Math.cos(p);
+    ei -= w * Math.sin(p);
+  }
+  const dr = 1 - SQ2 * Math.cos(t * LN2), di = SQ2 * Math.sin(t * LN2);
+  const m = dr * dr + di * di;
+  out[0] = (er * dr + ei * di) / m;
+  out[1] = (ei * dr - er * di) / m;
+  return out;
+}
+window.__zeta = t => { const z = zeta(t); return [z[0], z[1]]; };
+
+// ---------- samples, computed ahead of the playhead ----------
+const T_MAX = 150, DT = 0.004, NS = Math.ceil(T_MAX / DT) + 4;
+const X = new Float32Array(NS), Y = new Float32Array(NS), M = new Float32Array(NS);
+let computed = 0, scanned = 1;
+const zeros = [];
+function compute(deadline) {
+  while (computed < NS && performance.now() < deadline) {
+    for (let j = 0; j < 40 && computed < NS; j++) {
+      zeta(computed * DT);
+      X[computed] = out[0]; Y[computed] = out[1]; M[computed] = Math.hypot(out[0], out[1]);
+      computed++;
+    }
+  }
+  // zeros: local minima of |zeta| between samples, refined until |zeta| < 1e-6
+  while (scanned < computed - 1) {
+    const i = scanned++;
+    if (M[i] < 0.25 && M[i] <= M[i - 1] && M[i] <= M[i + 1]) {
+      let lo = (i - 1) * DT, hi = (i + 1) * DT;
+      for (let k = 0; k < 80; k++) {
+        const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+        zeta(m1); const f1 = out[0] * out[0] + out[1] * out[1];
+        zeta(m2); const f2 = out[0] * out[0] + out[1] * out[1];
+        if (f1 < f2) hi = m2; else lo = m1;
+      }
+      const tz = (lo + hi) / 2;
+      zeta(tz);
+      if (Math.hypot(out[0], out[1]) < 1e-6 && (!zeros.length || tz - zeros[zeros.length - 1] > 1e-3)) zeros.push(tz);
+    }
+  }
+}
+window.__zeros = zeros;
+
+// ---------- canvas ----------
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const tr = document.getElementById('tr');
+let Wpx = 0, Hpx = 0, dpr = 1;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  Wpx = Math.round(innerWidth * dpr); Hpx = Math.round(innerHeight * dpr);
+  cv.width = Wpx; cv.height = Hpx;
+}
+addEventListener('resize', resize);
+resize();
+
+// ---------- state ----------
+const BASE = 2.5;          // t per second when nothing is happening
+const CX = 0.6;            // camera looks at 0.6 + 0i (zeta circles around 1, the origin sits left of centre)
+let t, zi, pulses, R, phase, phaseAge, life;
+let mult = 1, target = 1, hurry = false;
+function reset() { t = 0; zi = 0; pulses = []; R = 1.9; phase = 'run'; phaseAge = 0; life = 0; }
+reset();
+
+function idxAt(tt) { return Math.min(computed - 2, Math.max(0, Math.floor(tt / DT))); }
+function lerpAt(arr, tt) { const i = idxAt(tt), f = tt / DT - i; return arr[i] + (arr[i + 1] - arr[i]) * f; }
+const sm = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+
+function step(dt) {
+  dt = Math.min(dt, 0.1);
+  life += dt;
+  mult += (target - mult) * (1 - Math.exp(-dt * 5));
+  if (phase === 'run') {
+    const m = lerpAt(M, t);
+    const v = BASE * mult * (0.18 + 0.82 * sm(m / 0.95)) * (0.35 + 0.65 * sm(life / 2.5));
+    const tn = Math.min(t + v * dt, T_MAX, (computed - 4) * DT);
+    while (zi < zeros.length && zeros[zi] <= tn) { pulses.push({ n: zi + 1, tz: zeros[zi], age: 0 }); zi++; }
+    t = Math.max(t, tn);
+    if (t >= T_MAX - 1e-9) { phase = 'end'; phaseAge = 0; }
+  } else {
+    phaseAge += dt;
+    if (phaseAge > 7) reset();
+  }
+  for (const p of pulses) p.age += dt;
+  while (pulses.length && pulses[0].age > 6) pulses.shift();
+  // camera: fit the last ~12 units of t, eased slowly
+  const i = idxAt(t), i0 = Math.max(0, i - 3000), i1 = Math.min(computed - 1, i + 250);
+  let md = 0;
+  for (let k = i0; k <= i1; k += 3) { const dx = X[k] - CX, dy = Y[k], d = dx * dx + dy * dy; if (d > md) md = d; }
+  const Rt = Math.max(1.9, 1.1 * Math.sqrt(md));
+  R += (Rt - R) * (1 - Math.exp(-dt * (Rt > R ? 0.9 : 0.35)));
+}
+
+function mix(c1, c2, f) { return [c1[0] + (c2[0] - c1[0]) * f, c1[1] + (c2[1] - c1[1]) * f, c1[2] + (c2[2] - c1[2]) * f]; }
+const C_OLD = [52, 70, 150], C_MID = [128, 156, 226], C_NEW = [255, 228, 178];
+function trailColor(f) { return f < 0.6 ? mix(C_OLD, C_MID, f / 0.6) : mix(C_MID, C_NEW, (f - 0.6) / 0.4); }
+
+function draw() {
+  const W_ = Wpx, H_ = Hpx;
+  const s = Math.min(W_ * 0.44, H_ * 0.34) / R;
+  const ox = W_ * 0.5 - CX * s, oy = H_ * 0.43; // screen position of the origin
+  const px = k => ox + X[k] * s, py = k => oy - Y[k] * s;
+  let fade = sm(life / 2);
+  if (phase === 'end') fade *= 1 - sm(phaseAge / 4.5);
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#04050a';
+  ctx.fillRect(0, 0, W_, H_);
+  const vg = ctx.createRadialGradient(ox + CX * s, oy, 0, ox + CX * s, oy, Math.max(W_, H_) * 0.75);
+  vg.addColorStop(0, 'rgba(22,26,44,0.55)'); vg.addColorStop(1, 'rgba(4,5,10,0)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W_, H_);
+
+  const hi = idxAt(t), hf = t / DT - hi;
+  const hx = ox + (X[hi] + (X[hi + 1] - X[hi]) * hf) * s, hy = oy - (Y[hi] + (Y[hi + 1] - Y[hi]) * hf) * s;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.globalCompositeOperation = 'lighter';
+
+  // the whole past, faint
+  if (hi > 2) {
+    const st = Math.max(1, Math.ceil(hi / 6000));
+    ctx.beginPath(); ctx.moveTo(px(0), py(0));
+    for (let k = st; k < hi; k += st) ctx.lineTo(px(k), py(k));
+    ctx.lineTo(hx, hy);
+    ctx.globalAlpha = 0.11 * fade; ctx.strokeStyle = 'rgb(120,140,200)'; ctx.lineWidth = 0.8 * dpr; ctx.stroke();
+  }
+
+  // the recent trail, in bands that fade with age
+  const L = 2600, B = 32, start = Math.max(0, hi - L);
+  for (let b = 0; b < B; b++) {
+    const k0 = start + Math.floor((hi - start) * b / B), k1 = start + Math.floor((hi - start) * (b + 1) / B);
+    if (k1 <= k0) continue;
+    const age = 1 - (hi - (k0 + k1) / 2) / L; // 1 = newest
+    const c = trailColor(age);
+    ctx.beginPath(); ctx.moveTo(px(k0), py(k0));
+    for (let k = k0 + 1; k <= k1; k++) ctx.lineTo(px(k), py(k));
+    if (b === B - 1) ctx.lineTo(hx, hy);
+    ctx.strokeStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+    ctx.globalAlpha = Math.pow(age, 1.7) * 0.95 * fade;
+    ctx.lineWidth = (0.9 + 0.9 * age) * dpr; ctx.stroke();
+    if (age > 0.8) { ctx.globalAlpha = (age - 0.8) * 0.45 * fade; ctx.lineWidth = 6 * dpr; ctx.stroke(); }
+  }
+
+  // the origin
+  ctx.globalAlpha = 0.5 * fade; ctx.fillStyle = 'rgb(210,205,195)';
+  ctx.beginPath(); ctx.arc(ox, oy, 1.4 * dpr, 0, 6.2832); ctx.fill();
+
+  // passes through zero
+  for (const p of pulses) {
+    const a1 = p.age;
+    if (a1 < 1.4) {
+      const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, 46 * dpr);
+      const al = 0.55 * Math.pow(1 - a1 / 1.4, 2) * fade;
+      g.addColorStop(0, `rgba(255,240,215,${al})`); g.addColorStop(1, 'rgba(255,240,215,0)');
+      ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(ox - 46 * dpr, oy - 46 * dpr, 92 * dpr, 92 * dpr);
+    }
+    if (a1 < 3) {
+      const f = a1 / 3;
+      ctx.globalAlpha = 0.5 * Math.pow(1 - f, 2.2) * fade;
+      ctx.strokeStyle = 'rgb(255,236,205)'; ctx.lineWidth = 1 * dpr;
+      ctx.beginPath(); ctx.arc(ox, oy, (3 + 92 * (1 - Math.pow(1 - f, 3))) * dpr, 0, 6.2832); ctx.stroke();
+    }
+  }
+
+  // head
+  ctx.globalAlpha = fade;
+  const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, 11 * dpr);
+  hg.addColorStop(0, 'rgba(255,246,226,0.95)'); hg.addColorStop(0.25, 'rgba(255,226,170,0.35)'); hg.addColorStop(1, 'rgba(255,226,170,0)');
+  ctx.fillStyle = hg; ctx.fillRect(hx - 11 * dpr, hy - 11 * dpr, 22 * dpr, 22 * dpr);
+
+  // the zero's t, said quietly (newest only)
+  ctx.globalCompositeOperation = 'source-over';
+  const lp = pulses[pulses.length - 1];
+  if (lp && lp.age < 5) {
+    const a2 = sm(lp.age / 0.5) * (1 - sm((lp.age - 3.2) / 1.8)) * fade;
+    ctx.globalAlpha = a2;
+    ctx.fillStyle = 'rgb(240,230,210)';
+    ctx.font = `italic ${15 * dpr}px Georgia, 'Times New Roman', serif`;
+    ctx.textBaseline = 'top';
+    const lx = ox + 14 * dpr, ly = oy + 14 * dpr;
+    ctx.fillText('t = ' + lp.tz.toFixed(6), lx, ly);
+    ctx.globalAlpha = a2 * 0.55;
+    ctx.font = `${10 * dpr}px ui-monospace, Menlo, monospace`;
+    ctx.fillText('zero ' + lp.n, lx, ly + 21 * dpr);
+  }
+  ctx.globalAlpha = 1;
+  tr.textContent = 't ' + t.toFixed(2);
+}
+
+// ---------- touch: hold to slow, tap to hurry ----------
+let holdTimer = 0, holding = false;
+function release(toggle) {
+  clearTimeout(holdTimer);
+  if (holding) holding = false;
+  else if (toggle) hurry = !hurry;
+  target = hurry ? 3 : 1;
+}
+addEventListener('pointerdown', () => { holdTimer = setTimeout(() => { holding = true; target = 0.2; }, 230); });
+addEventListener('pointerup', () => release(true));
+addEventListener('pointercancel', () => release(false));
+addEventListener('contextmenu', e => e.preventDefault());
+
+// ---------- run ----------
+if (REC) {
+  compute(Infinity);
+  window.__frame = dt => { step(dt); draw(); };
+  window.__state = () => ({ t, zeros: zeros.length, R, phase });
+  window.__ready = true;
+} else {
+  compute(performance.now() + 40);
+  let last = performance.now();
+  const loop = now => {
+    compute(now + 5);
+    step((now - last) / 1000); last = now;
+    draw();
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+})();
+</script>
+</body>
+</html>
